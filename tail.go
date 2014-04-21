@@ -169,6 +169,32 @@ func (tail *Tail) reopen() error {
 	return nil
 }
 
+func (tail *Tail) Reopen() error {
+	if tail.file != nil {
+		tail.file.Close()
+	}
+	for {
+		var err error
+		tail.file, err = os.Open(tail.Filename)
+		if err != nil {
+			if os.IsNotExist(err) {
+				tail.Logger.Printf("Waiting for %s to appear...", tail.Filename)
+				if err := tail.watcher.BlockUntilExists(&tail.Tomb); err != nil {
+					if err == tomb.ErrDying {
+						return err
+					}
+					return fmt.Errorf("Failed to detect creation of %s: %s", tail.Filename, err)
+				}
+				continue
+			}
+			return fmt.Errorf("Unable to open file %s: %s", tail.Filename, err)
+		}
+		break
+	}
+	tail.reader = tail.newReader()
+	return nil
+}
+
 func (tail *Tail) readLine() ([]byte, error) {
 	line, isPrefix, err := tail.reader.ReadLine()
 	if !isPrefix || tail.MaxLineSize > 0 {
